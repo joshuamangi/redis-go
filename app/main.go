@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -33,7 +34,37 @@ func handleconnection(conn net.Conn) {
 		if err != nil {
 			break
 		}
-		conn.Write([]byte("+PONG\r\n"))
 		fmt.Printf("Received: %s", string(buf[:n]))
+		// convert to string and split by CRLF
+		input := string(buf[:n])
+		parts := strings.Split(input, "\r\n")
+		// check if string is less than 2 parts and continue
+		// The key idea is REDIS commands start at part 2
+		// The first part contain for an RESP ARRAY [number of characters]
+		// The second is the [array length of the first part]
+		// The third part contains the first command followed by the carriage return
+		if len(parts) < 3 {
+			continue
+		}
+		// convert to upper case
+		command := strings.ToUpper(parts[2])
+		// create switch case
+		switch command {
+		// switch PING and return PONG
+		case "PING":
+			conn.Write([]byte("+PONG\r\n"))
+
+		// swtich ECHO and generate response of bulk string with length and argument
+		case "ECHO":
+			if len(parts) >= 5 {
+				arg := parts[4]
+				// Create bulk string with length and argument
+				response := fmt.Sprintf("$%d\r\n%s\r\n", len(arg), arg)
+				conn.Write([]byte(response))
+			}
+		// Return error if command is not PING or ECHO
+		default:
+			conn.Write([]byte("-ERR unknown command\r\n"))
+		}
 	}
 }
