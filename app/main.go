@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+var db = make(map[string]string)
+
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
@@ -58,10 +60,40 @@ func handleconnection(conn net.Conn) {
 		case "ECHO":
 			if len(parts) >= 5 {
 				arg := parts[4]
-				// Create bulk string with length and argument
+				// Create bulk string with length and argument as a bulk string
 				response := fmt.Sprintf("$%d\r\n%s\r\n", len(arg), arg)
 				conn.Write([]byte(response))
 			}
+		// switch SET contains key and value
+		case "SET":
+			if len(parts) >= 5 {
+				// get the key from the command
+				set_key := parts[4]
+				// get the value from the command
+				set_value := parts[6]
+				// store the key value pair to a map
+				db[set_key] = set_value
+				// return OK as a Simple string
+				response := fmt.Sprintf("+%s\r\n", "OK")
+				conn.Write([]byte(response))
+			}
+		// switch GET contains key
+		case "GET":
+			if len(parts) >= 5 {
+				// get the key from the command
+				get_key := parts[4]
+				// query from the map the value of the key
+				query_get_value, key_exist := db[get_key]
+				if key_exist {
+					response := fmt.Sprintf("$%d\r\n%s\r\n", len(query_get_value), query_get_value)
+					conn.Write([]byte(response))
+				} else {
+					response := fmt.Sprintf("$%d\r\n", -1)
+					conn.Write([]byte(response))
+					// return the value
+				}
+			}
+
 		// Return error if command is not PING or ECHO
 		default:
 			conn.Write([]byte("-ERR unknown command\r\n"))
