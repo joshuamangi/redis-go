@@ -4,10 +4,17 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
-var db = make(map[string]string)
+type Item struct {
+	value     string
+	expiresAt int64 //Unix timestamp in milliseconds
+}
+
+var db = make(map[string]Item)
 
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -61,42 +68,85 @@ func handleconnection(conn net.Conn) {
 			if len(parts) >= 5 {
 				arg := parts[4]
 				// Create bulk string with length and argument as a bulk string
-				response := fmt.Sprintf("$%d\r\n%s\r\n", len(arg), arg)
-				conn.Write([]byte(response))
+				conn.Write([]byte(parseBulkString(arg)))
 			}
 		// switch SET contains key and value
 		case "SET":
-			if len(parts) >= 5 {
+			if len(parts) >= 7 {
 				// get the key from the command
-				set_key := parts[4]
+				setKey := parts[4]
 				// get the value from the command
-				set_value := parts[6]
+				setValue := parts[6]
+				var expiresAt int64 = 0
+
+				// get the command key of the command at parts 8
+				if len(parts) >= 11 {
+					ttlType := strings.ToUpper(parts[8])
+					ttlValueStr := parts[10]
+
+					ttlValue, _ := strconv.Atoi(ttlValueStr)
+
+					switch ttlType {
+					case "EX":
+						expiresAt = time.Now().Add(time.Duration(ttlValue) * time.Second).UnixMilli()
+					case "PX":
+						expiresAt = time.Now().Add(time.Duration(ttlValue) * time.Millisecond).UnixMilli()
+					}
+				}
+				// what should be done if it is EX or PX
 				// store the key value pair to a map
-				db[set_key] = set_value
+				db[setKey] = Item{
+					value:     setValue,
+					expiresAt: expiresAt,
+				}
+				// get the duration of the respective command at parts 10
+				// if time expires, remove the key value pair from the datamap
 				// return OK as a Simple string
-				response := fmt.Sprintf("+%s\r\n", "OK")
-				conn.Write([]byte(response))
+				conn.Write([]byte(parseSimpleString("OK")))
 			}
 		// switch GET contains key
 		case "GET":
 			if len(parts) >= 5 {
 				// get the key from the command
-				get_key := parts[4]
+				getKey := parts[4]
 				// query from the map the value of the key
-				query_get_value, key_exist := db[get_key]
-				if key_exist {
-					response := fmt.Sprintf("$%d\r\n%s\r\n", len(query_get_value), query_get_value)
-					conn.Write([]byte(response))
-				} else {
-					response := fmt.Sprintf("$%d\r\n", -1)
-					conn.Write([]byte(response))
-					// return the value
+				item, key_exists := db[getKey]
+				if !key_exists {
+					conn.Write([]byte(parseNullBulkString(-1)))
+					return
 				}
+				// check expiry
+				if item.expiresAt > 0 && time.Now().UnixMilli() > item.expiresAt {
+					delete(db, getKey) //remove expired key
+					conn.Write([]byte(parseNullBulkString(-1)))
+					return
+				}
+				conn.Write([]byte(parseBulkString(item.value)))
 			}
 
 		// Return error if command is not PING or ECHO
 		default:
-			conn.Write([]byte("-ERR unknown command\r\n"))
+			conn.Write([]byte(parseSimpleErrors("ERR unknown command")))
 		}
 	}
+}
+
+func parseBulkString(bulk_string string) (response string) {
+	response = fmt.Sprintf("$%d\r\n%s\r\n", len(bulk_string), bulk_string)
+	return
+}
+
+func parseSimpleString(simple_string string) (response string) {
+	response = fmt.Sprintf("+%s\r\n", simple_string)
+	return
+}
+
+func parseNullBulkString(null_bulk_int int) (response string) {
+	response = fmt.Sprintf("$%d\r\n", null_bulk_int)
+	return
+}
+
+func parseSimpleErrors(simple_error string) (response string) {
+	response = fmt.Sprintf("-%s\r\n", simple_error)
+	return
 }
