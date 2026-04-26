@@ -44,7 +44,7 @@ func handleconnection(conn net.Conn) {
 		if err != nil {
 			break
 		}
-		fmt.Printf("Received: %s", string(buf[:n]))
+		// fmt.Printf("Received: %s", string(buf[:n]))
 		// convert to string and split by CRLF
 		input := string(buf[:n])
 		parts := strings.Split(input, "\r\n")
@@ -126,13 +126,17 @@ func handleconnection(conn net.Conn) {
 			}
 		case "RPUSH":
 			// gets name of list
-			if len(parts) >= 7 {
-				// gets value of list
-				listName := parts[4]
-				listValue := parts[6]
-				// create list
-				// add value to the map
-				dbArray[listName] = append(dbArray[listName], listValue)
+			totalRpushCount := len(parts)
+			listName := parts[4]
+			if len(parts) >= totalRpushCount {
+				// for the range
+				for i := 6; i < totalRpushCount; i++ {
+					if i%2 == 0 {
+						listValue := parts[i]
+						dbArray[listName] = append(dbArray[listName], listValue)
+					}
+				}
+				fmt.Printf("dbArray\t%v\n", dbArray)
 				dbArrayCount := len(dbArray[listName])
 				conn.Write([]byte(parseIntgers(dbArrayCount)))
 				// return RESP integer
