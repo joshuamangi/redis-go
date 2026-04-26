@@ -9,12 +9,13 @@ import (
 	"time"
 )
 
-type Item struct {
+type CreateGetSet struct {
 	value     string
 	expiresAt int64 //Unix timestamp in milliseconds
 }
 
-var db = make(map[string]Item)
+var db = make(map[string]CreateGetSet)
+var dbArray = make(map[string][]string)
 
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -95,7 +96,7 @@ func handleconnection(conn net.Conn) {
 				}
 				// what should be done if it is EX or PX
 				// store the key value pair to a map
-				db[setKey] = Item{
+				db[setKey] = CreateGetSet{
 					value:     setValue,
 					expiresAt: expiresAt,
 				}
@@ -123,7 +124,20 @@ func handleconnection(conn net.Conn) {
 				}
 				conn.Write([]byte(parseBulkString(item.value)))
 			}
+		case "RPUSH":
+			// gets name of list
+			if len(parts) >= 7 {
+				// gets value of list
+				listName := parts[4]
+				listValue := parts[6]
+				// create list
+				// add value to the map
+				dbArray[listName] = append(dbArray[listName], listValue)
+				dbArrayCount := len(dbArray[listName])
+				conn.Write([]byte(parseIntgers(dbArrayCount)))
+				// return RESP integer
 
+			}
 		// Return error if command is not PING or ECHO
 		default:
 			conn.Write([]byte(parseSimpleErrors("ERR unknown command")))
@@ -148,5 +162,10 @@ func parseNullBulkString(null_bulk_int int) (response string) {
 
 func parseSimpleErrors(simple_error string) (response string) {
 	response = fmt.Sprintf("-%s\r\n", simple_error)
+	return
+}
+
+func parseIntgers(dbArrayCount int) (response string) {
+	response = fmt.Sprintf(":%d\r\n", dbArrayCount)
 	return
 }
