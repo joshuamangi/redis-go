@@ -151,7 +151,7 @@ func handleconnection(conn net.Conn) {
 			// if the dbarray list doesn't exist return empty RESP aray (*0\r\n)
 			list, rPushValuesExists := dbArray[lRangeName]
 			if !rPushValuesExists {
-				conn.Write([]byte(parseArray(len(dbArray))))
+				conn.Write([]byte(parseArray(0)))
 				return
 			}
 			// if the staart index is greeater than or equal to the list's length, an empty array is returned
