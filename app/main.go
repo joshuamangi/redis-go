@@ -136,17 +136,60 @@ func handleconnection(conn net.Conn) {
 						dbArray[listName] = append(dbArray[listName], listValue)
 					}
 				}
-				fmt.Printf("dbArray\t%v\n", dbArray)
 				dbArrayCount := len(dbArray[listName])
-				conn.Write([]byte(parseIntgers(dbArrayCount)))
+				conn.Write([]byte(parseIntegers(dbArrayCount)))
 				// return RESP integer
 
 			}
+		case "LRANGE":
+			// from the dbarray map get the values from the LRANGE list
+			lRangeName := parts[4]
+			// Get the start index and convert to int
+			startLRange, _ := strconv.Atoi(parts[6])
+			// Get the stop index and convert to int
+			stopLRange, _ := strconv.Atoi(parts[8])
+			// if the dbarray list doesn't exist return empty RESP aray (*0\r\n)
+			list, rPushValuesExists := dbArray[lRangeName]
+			if !rPushValuesExists {
+				conn.Write([]byte(parseArray(len(dbArray))))
+				return
+			}
+			// if the staart index is greeater than or equal to the list's length, an empty array is returned
+			if startLRange >= len(list) {
+				conn.Write([]byte(parseArray(0)))
+				continue
+			}
+			// if stop index is greater than or equal to the list's length, the stop index is treated as the last index
+			if stopLRange >= len(list) {
+				stopLRange := len(list) - 1
+				conn.Write([]byte(getlRangeValues(lRangeName, startLRange, stopLRange)))
+				continue
+			}
+			// if the start index is grater than the stop index, an empty array is returned
+			if startLRange >= stopLRange {
+				conn.Write([]byte(parseArray(0)))
+				continue
+			}
+			conn.Write([]byte(getlRangeValues(lRangeName, startLRange, stopLRange)))
 		// Return error if command is not PING or ECHO
 		default:
 			conn.Write([]byte(parseSimpleErrors("ERR unknown command")))
 		}
 	}
+}
+
+func getlRangeValues(lRangeName string, startLRange int, stopLRange int) (response string) {
+	// for each value in the range display
+	// dbArray := map["list_key": ["a","b","c","d","e","f"], "another_list": ["g","h","i"]
+
+	dbList := dbArray[lRangeName]
+	rangeLength := (stopLRange - startLRange) + 1
+	response = fmt.Sprintf("*%d\r\n", rangeLength)
+	for i := startLRange; i <= stopLRange; i++ {
+		response = response + fmt.Sprintf("$%d\r\n%s\r\n", len(dbList[i]), dbList[i])
+	}
+	fmt.Println(response)
+	return response
 }
 
 func parseBulkString(bulk_string string) (response string) {
@@ -169,7 +212,12 @@ func parseSimpleErrors(simple_error string) (response string) {
 	return
 }
 
-func parseIntgers(dbArrayCount int) (response string) {
+func parseIntegers(dbArrayCount int) (response string) {
 	response = fmt.Sprintf(":%d\r\n", dbArrayCount)
+	return
+}
+
+func parseArray(empty_aray int) (response string) {
+	response = fmt.Sprintf("*%d\r\n", empty_aray)
 	return
 }
